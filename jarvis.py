@@ -1,5 +1,8 @@
+import asyncio
 import os
 import time
+import edge_tts
+import pygame
 import pyttsx3
 import sounddevice as sd
 import speech_recognition as sr
@@ -26,19 +29,43 @@ chat = client.chats.create(
     ),
 )
 
+# --- Settings ---
+VOICE = "en-US-ChristopherNeural"  # change this to the British voice you chose
+SPEECH_FILE = "jarvis_speech.mp3"
 SAMPLE_RATE = 16000
 LISTEN_SECONDS = 5
+
 recognizer = sr.Recognizer()
+pygame.mixer.init()
+
+
+async def make_audio(text, path):
+    communicate = edge_tts.Communicate(text, VOICE)
+    await communicate.save(path)
+
+
+def speak_fallback(text):
+    """Backup voice (built-in Windows voice) if the neural voice fails."""
+    engine = pyttsx3.init()
+    engine.setProperty("rate", 175)
+    engine.say(text)
+    engine.runAndWait()
+    engine.stop()
 
 
 def speak(text):
-    """Say the text out loud using the built-in Windows voice."""
+    """Say the text out loud with the British neural voice."""
     clean_text = text.replace("*", "").replace("#", "")
-    engine = pyttsx3.init()
-    engine.setProperty("rate", 175)  # speaking speed, try 150-200
-    engine.say(clean_text)
-    engine.runAndWait()
-    engine.stop()
+    try:
+        asyncio.run(make_audio(clean_text, SPEECH_FILE))
+        pygame.mixer.music.load(SPEECH_FILE)
+        pygame.mixer.music.play()
+        while pygame.mixer.music.get_busy():
+            pygame.time.Clock().tick(10)
+        pygame.mixer.music.unload()
+    except Exception:
+        print("(Neural voice unavailable, using backup voice.)")
+        speak_fallback(clean_text)
 
 
 def listen():
