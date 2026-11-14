@@ -8,7 +8,7 @@ A personal AI voice assistant inspired by Iron Man's J.A.R.V.I.S., built in Pyth
 
 - Voice input: press Enter, speak, and Jarvis turns my speech into text (typing a message also works)
 - AI replies from the Gemini API, with a custom "Jarvis" personality
-- Spoken replies using text-to-speech
+- Spoken replies in a calm British neural voice (falls back to a built-in voice if offline)
 - Remembers earlier messages during a conversation (memory resets when the program closes)
 - Retries automatically if the AI server is busy
 - API key kept out of the code using a `.env` file
@@ -18,7 +18,7 @@ A personal AI voice assistant inspired by Iron Man's J.A.R.V.I.S., built in Pyth
 - Python
 - Google Gemini API (`google-genai`)
 - `SpeechRecognition` (uses Google's free speech-to-text service) and `sounddevice` for microphone input
-- `pyttsx3` for text-to-speech (built-in Windows voices)
+- `edge-tts` and `pygame` for a British neural text-to-speech voice, with `pyttsx3` (built-in Windows voices) as a backup
 - `python-dotenv`
 
 ## How to run it
@@ -55,7 +55,7 @@ If you get a "model not available" error, Google has probably retired the model 
 
 - [x] Stage 1: Text chat with memory
 - [x] Stage 2: Voice input and spoken replies
-- [ ] Calm British voice using a neural text-to-speech engine
+- [x] Calm British voice using a neural text-to-speech engine
 - [ ] Stage 3: Abilities, such as opening websites and apps, weather, timers, and notes
 - [ ] Memory that persists between runs
 - [ ] Wake word and automatic silence detection
