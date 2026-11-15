@@ -66,6 +66,30 @@ def search_google(query: str) -> str:
     webbrowser.open("https://www.google.com/search?q=" + quote_plus(query))
     return f"Searched Google for '{query}'."
 
+APPS = {
+    "whatsapp": "whatsapp:",
+    "discord": "discord:",
+    "notepad": "notepad",
+    "calculator": "calc",
+}
+
+
+def open_app(app: str) -> str:
+    """Open a desktop app on the user's computer. Use this when the user asks to open an app such as
+    WhatsApp, Discord, Notepad or Calculator.
+
+    Args:
+        app: The name of the app, for example 'whatsapp'.
+    """
+    target = APPS.get(app.lower().strip())
+    if target is None:
+        return f"I don't know the app '{app}'. I can open: {', '.join(APPS)}."
+    try:
+        os.startfile(target)
+        return f"Opened {app}."
+    except OSError:
+        return f"I couldn't open {app}. It may not be installed."
+
 
 # Create a chat that remembers the conversation (during this run)
 chat = client.chats.create(
@@ -77,7 +101,7 @@ chat = client.chats.create(
             "Do not use markdown, asterisks, or bullet points, because your replies are spoken aloud. "
             "When the user asks you to do something you have a tool for, use the tool."
         ),
-        tools=[get_current_time, open_website, search_google],
+        tools=[get_current_time, open_website, search_google, open_app],
     ),
 )
 
