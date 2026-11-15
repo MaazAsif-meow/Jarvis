@@ -1,5 +1,6 @@
 import asyncio
 import os
+import subprocess
 import time
 import webbrowser
 from datetime import datetime
@@ -33,6 +34,17 @@ KNOWN_SITES = {
     "github": "https://www.github.com",
     "gmail": "https://mail.google.com",
     "wikipedia": "https://www.wikipedia.org",
+    "claude": "https://claude.ai",
+}
+
+APPS = {
+    "whatsapp": "whatsapp:",
+    "discord": "discord:",
+    "spotify": "spotify:",
+    "claude": "claude:",
+    "vscode": "code",
+    "notepad": "notepad",
+    "calculator": "calc",
 }
 
 
@@ -66,17 +78,10 @@ def search_google(query: str) -> str:
     webbrowser.open("https://www.google.com/search?q=" + quote_plus(query))
     return f"Searched Google for '{query}'."
 
-APPS = {
-    "whatsapp": "whatsapp:",
-    "discord": "discord:",
-    "notepad": "notepad",
-    "calculator": "calc",
-}
-
 
 def open_app(app: str) -> str:
     """Open a desktop app on the user's computer. Use this when the user asks to open an app such as
-    WhatsApp, Discord, Notepad or Calculator.
+    WhatsApp, Discord, Spotify, Claude, VS Code, Notepad or Calculator.
 
     Args:
         app: The name of the app, for example 'whatsapp'.
@@ -85,10 +90,38 @@ def open_app(app: str) -> str:
     if target is None:
         return f"I don't know the app '{app}'. I can open: {', '.join(APPS)}."
     try:
-        os.startfile(target)
+        if target == "code":
+            # VS Code is launched through its command-line launcher
+            subprocess.Popen("code", shell=True)
+        else:
+            os.startfile(target)
         return f"Opened {app}."
     except OSError:
         return f"I couldn't open {app}. It may not be installed."
+
+
+# ---------------------------------------------------------------
+# ROUTINE: opens everything in one go. Edit these lists any time.
+# ---------------------------------------------------------------
+ROUTINE_APPS = ["spotify", "discord", "claude", "vscode", "whatsapp"]
+ROUTINE_SITES = ["github"]
+ROUTINE_GREETING = "Welcome home, sir. Starting your usual setup."
+
+
+def run_routine():
+    """Open all the apps and websites in the routine, one after another."""
+    for app in ROUTINE_APPS:
+        print("  ", open_app(app))
+        time.sleep(1)  # small pause so Windows isn't overloaded
+    for site in ROUTINE_SITES:
+        print("  ", open_website(site))
+        time.sleep(1)
+
+
+def is_routine_phrase(text):
+    """True if the user said something like 'wake up, daddy's home'."""
+    t = text.lower()
+    return "wake up" in t and "home" in t
 
 
 # Create a chat that remembers the conversation (during this run)
@@ -139,10 +172,11 @@ def speak(text):
         while pygame.mixer.music.get_busy():
             pygame.time.Clock().tick(10)
         pygame.mixer.music.unload()
-    except Exception:
+    except Exception as e:
         print("(Neural voice unavailable, using backup voice.)")
+        print("Reason:", repr(e))
         speak_fallback(clean_text)
-
+        
 
 def listen():
     """Record from the microphone for a few seconds and return the text, or None."""
@@ -182,6 +216,14 @@ while True:
         print("Jarvis: Goodbye!")
         speak("Goodbye!")
         break
+
+    # Shortcut: the "wake up, daddy's home" routine skips Gemini entirely
+    if is_routine_phrase(user_input):
+        print("Jarvis:", ROUTINE_GREETING, "\n")
+        speak(ROUTINE_GREETING)
+        run_routine()
+        print()
+        continue
 
     for attempt in range(3):
         try:
