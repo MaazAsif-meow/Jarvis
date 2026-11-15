@@ -1,6 +1,10 @@
 import asyncio
 import os
 import time
+import webbrowser
+from datetime import datetime
+from urllib.parse import quote_plus
+
 import edge_tts
 import pygame
 import pyttsx3
@@ -17,6 +21,52 @@ api_key = os.getenv("GEMINI_API_KEY")
 # Connect to Gemini
 client = genai.Client(api_key=api_key)
 
+
+# ---------------------------------------------------------------
+# TOOLS: normal Python functions that Jarvis is allowed to use.
+# Gemini reads each function's name, type hints and docstring to
+# decide when to call it, so write them clearly.
+# ---------------------------------------------------------------
+KNOWN_SITES = {
+    "youtube": "https://www.youtube.com",
+    "google": "https://www.google.com",
+    "github": "https://www.github.com",
+    "gmail": "https://mail.google.com",
+    "wikipedia": "https://www.wikipedia.org",
+}
+
+
+def get_current_time() -> str:
+    """Get the current local date and time. Use this when the user asks what time or date it is."""
+    now = datetime.now()
+    return now.strftime("%A, %d %B %Y, %I:%M %p")
+
+
+def open_website(site: str) -> str:
+    """Open a website in the user's web browser. Use this when the user asks to open a site such as
+    YouTube, Google, GitHub, Gmail or Wikipedia.
+
+    Args:
+        site: The name of the website, for example 'youtube'.
+    """
+    url = KNOWN_SITES.get(site.lower().strip())
+    if url is None:
+        return f"I don't know the website '{site}'. I can open: {', '.join(KNOWN_SITES)}."
+    webbrowser.open(url)
+    return f"Opened {site}."
+
+
+def search_google(query: str) -> str:
+    """Search Google for something and show the results in the user's browser. Use this when the
+    user asks to search for or look something up on the web.
+
+    Args:
+        query: What to search for.
+    """
+    webbrowser.open("https://www.google.com/search?q=" + quote_plus(query))
+    return f"Searched Google for '{query}'."
+
+
 # Create a chat that remembers the conversation (during this run)
 chat = client.chats.create(
     model="gemini-3.5-flash-lite",  # if this errors, check the current model name in Google AI Studio
@@ -24,13 +74,15 @@ chat = client.chats.create(
         system_instruction=(
             "You are Jarvis, a helpful, witty personal assistant. "
             "Keep answers short and clear. "
-            "Do not use markdown, asterisks, or bullet points, because your replies are spoken aloud."
-        )
+            "Do not use markdown, asterisks, or bullet points, because your replies are spoken aloud. "
+            "When the user asks you to do something you have a tool for, use the tool."
+        ),
+        tools=[get_current_time, open_website, search_google],
     ),
 )
 
 # --- Settings ---
-VOICE = "en-US-ChristopherNeural"  # change this to the British voice you chose
+VOICE = "en-GB-RyanNeural"  # change this to the British voice you chose
 SPEECH_FILE = "jarvis_speech.mp3"
 SAMPLE_RATE = 16000
 LISTEN_SECONDS = 5
