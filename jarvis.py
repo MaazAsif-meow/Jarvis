@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 import subprocess
 import time
@@ -21,6 +22,37 @@ api_key = os.getenv("GEMINI_API_KEY")
 
 # Connect to Gemini
 client = genai.Client(api_key=api_key)
+
+
+# ---------------------------------------------------------------
+# PERSISTENT MEMORY
+# Two layers, both saved to files so they survive between runs:
+#   1. FACTS: short things Jarvis was told to remember (your name,
+#      preferences). Always given to Jarvis at startup.
+#   2. HISTORY: the recent conversation, reloaded at startup so
+#      Jarvis can pick up where you left off.
+# ---------------------------------------------------------------
+MEMORY_FILE = "memory.json"
+HISTORY_FILE = "history.json"
+MAX_HISTORY_MESSAGES = 20  # how many recent messages to reload at startup
+
+
+def load_json(path, default):
+    """Read a JSON file, or return the default if it's missing or broken."""
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return default
+
+
+def save_json(path, data):
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+
+
+facts = load_json(MEMORY_FILE, [])
+saved_history = load_json(HISTORY_FILE, [])
 
 
 # ---------------------------------------------------------------
@@ -100,6 +132,37 @@ def open_app(app: str) -> str:
         return f"I couldn't open {app}. It may not be installed."
 
 
+def remember_fact(fact: str) -> str:
+    """Save a fact about the user so it is remembered in future conversations. Use this when the user
+    tells you something worth remembering, such as their name, preferences, goals, or when they say
+    'remember that...'.
+
+    Args:
+        fact: The fact to remember, written as a short sentence, for example "The user's name is Maaz."
+    """
+    if fact in facts:
+        return "I already remember that."
+    facts.append(fact)
+    save_json(MEMORY_FILE, facts)
+    return f"Remembered: {fact}"
+
+
+def forget_fact(keyword: str) -> str:
+    """Delete saved facts that contain a keyword. Use this when the user asks you to forget something.
+
+    Args:
+        keyword: A word or phrase that appears in the fact to forget.
+    """
+    global facts
+    remaining = [f for f in facts if keyword.lower() not in f.lower()]
+    removed = len(facts) - len(remaining)
+    facts = remaining
+    save_json(MEMORY_FILE, facts)
+    if removed == 0:
+        return f"I had nothing saved about '{keyword}'."
+    return f"Forgot {removed} saved fact(s) about '{keyword}'."
+
+
 # ---------------------------------------------------------------
 # ROUTINE: opens everything in one go. Edit these lists any time.
 # ---------------------------------------------------------------
@@ -124,17 +187,43 @@ def is_routine_phrase(text):
     return "wake up" in t and "home" in t
 
 
-# Create a chat that remembers the conversation (during this run)
+# ---------------------------------------------------------------
+# Build Jarvis's instructions, including everything he remembers
+# ---------------------------------------------------------------
+def build_system_instruction():
+    text = (
+        "You are Jarvis, a helpful, witty personal assistant. "
+        "Keep answers short and clear. "
+        "Do not use markdown, asterisks, or bullet points, because your replies are spoken aloud. "
+        "When the user asks you to do something you have a tool for, use the tool. "
+        "When the user tells you something worth remembering about themselves, use the remember_fact tool."
+    )
+    if facts:
+        text += "\n\nThings you remember about the user:\n"
+        text += "\n".join(f"- {fact}" for fact in facts)
+    return text
+
+
+def build_history():
+    """Turn the saved messages into the format Gemini expects."""
+    recent = saved_history[-MAX_HISTORY_MESSAGES:]
+    # The history must start with a user message
+    while recent and recent[0]["role"] != "user":
+        recent = recent[1:]
+    return [
+        types.Content(role=m["role"], parts=[types.Part(text=m["text"])])
+        for m in recent
+    ]
+
+
+# Create a chat, starting with the saved history and facts
 chat = client.chats.create(
     model="gemini-3.5-flash-lite",  # if this errors, check the current model name in Google AI Studio
+    history=build_history(),
     config=types.GenerateContentConfig(
-        system_instruction=(
-            "You are Jarvis, a helpful, witty personal assistant. "
-            "Keep answers short and clear. "
-            "Do not use markdown, asterisks, or bullet points, because your replies are spoken aloud. "
-            "When the user asks you to do something you have a tool for, use the tool."
-        ),
-        tools=[get_current_time, open_website, search_google, open_app],
+        system_instruction=build_system_instruction(),
+        tools=[get_current_time, open_website, search_google, open_app,
+               remember_fact, forget_fact],
     ),
 )
 
@@ -176,7 +265,7 @@ def speak(text):
         print("(Neural voice unavailable, using backup voice.)")
         print("Reason:", repr(e))
         speak_fallback(clean_text)
-        
+
 
 def listen():
     """Record from the microphone for a few seconds and return the text, or None."""
@@ -198,6 +287,7 @@ def listen():
 
 
 print("Jarvis online.")
+print(f"(Remembering {len(facts)} fact(s) and {len(saved_history)} past message(s).)")
 print("Press Enter to talk, or type a message. Say or type 'quit' to exit.\n")
 speak("Jarvis online.")
 
@@ -228,8 +318,15 @@ while True:
     for attempt in range(3):
         try:
             response = chat.send_message(user_input)
-            print("Jarvis:", response.text, "\n")
-            speak(response.text)
+            reply = response.text
+            print("Jarvis:", reply, "\n")
+
+            # Save this exchange so Jarvis remembers it next time
+            saved_history.append({"role": "user", "text": user_input})
+            saved_history.append({"role": "model", "text": reply})
+            save_json(HISTORY_FILE, saved_history)
+
+            speak(reply)
             break
         except Exception as e:
             print(f"Jarvis: Server busy, retrying ({attempt + 1}/3)...")
